@@ -232,6 +232,7 @@ export class ChatGPTBot {
     const privateChat = !room;
     if (privateChat) {
       console.log(`🤵 Contact: ${talker.name()} 💬 Text: ${rawText}`)
+      console.log(`🤵 Contact form id : ${message.from()?.id}`)
     } else {
       const topic = await room.topic()
       console.log(`🚪 Room: ${topic} 🤵 Contact: ${talker.name()} 💬 Text: ${rawText}`)
