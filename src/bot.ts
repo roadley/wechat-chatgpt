@@ -26,8 +26,10 @@ enum MessageType {
 const SINGLE_MESSAGE_MAX_SIZE = 500;
 export class ChatGPTBot {
   chatPrivateTiggerKeyword = config.chatPrivateTiggerKeyword;
+  chatUserFlag: string = config.userFlag;
+  specialUserId: string = "";
   chatTiggerRule = config.chatTiggerRule? new RegExp(config.chatTiggerRule): undefined;
-  disableGroupMessage = config.disableGroupMessage || false;
+  disableGroupMessage = /*config.disableGroupMessage || */false;
   botName: string = "";
   ready = false;
   setBotName(botName: string) {
@@ -110,9 +112,14 @@ export class ChatGPTBot {
   ): boolean {
     return (
       talker.self() ||
+      (this.specialUserId !== talker.id && this.specialUserId !== "") || // 非特定用户
       // TODO: add doc support
       messageType !== MessageType.Text ||
       talker.name() === "微信团队" ||
+      talker.name() === "微信支付" ||
+      talker.name() === "文件传输助手" ||
+      talker.name() === "QQ邮箱提醒" ||
+      talker.name() === "微信运动" ||
       // 语音(视频)消息
       text.includes("收到一条视频/语音聊天消息，请在手机上查看") ||
       // 红包消息
@@ -151,14 +158,20 @@ export class ChatGPTBot {
     }
     if (this.tiggerGPTMessage(rawText, privateChat)) {
       const text = this.cleanMessage(rawText, privateChat);
+      if (text === this.chatUserFlag && this.specialUserId === "") {
+        this.specialUserId = talker.id;
+        await this.trySay(talker, "账号绑定成功");
+        return;
+      }
       if (privateChat) {
         return await this.onPrivateMessage(talker, text);
       } else{
-        if (!this.disableGroupMessage){
-          return await this.onGroupMessage(talker, text, room);
-        } else {
-          return;
-        }
+        return;
+        // if (!this.disableGroupMessage){
+        //   return await this.onGroupMessage(talker, text, room);
+        // } else {
+        //   return;
+        // }
       }
     } else {
       return;
