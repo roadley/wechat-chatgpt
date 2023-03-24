@@ -58,10 +58,8 @@ export class ChatGPTBot {
         await this.trySay(talker,"========\n" +
           "/cmd help\n" +
           "# 显示帮助信息\n" +
-          "/cmd prompt <PROMPT>\n" +
+          "/cmd prompt [PROMPT]\n" +
           "# 设置当前会话的 prompt \n" +
-          "/cmd img <PROMPT>\n" +
-          "# 根据 prompt 生成图片\n" +
           "/cmd clear\n" +
           "# 清除自上次启动以来的所有会话\n" +
           "========");
@@ -73,8 +71,10 @@ export class ChatGPTBot {
       exec: async (talker, prompt) => {
         if (talker instanceof RoomImpl) {
           DBUtils.setPrompt(await talker.topic(), prompt);
+          await this.trySay(talker, "设置成功");
         }else {
           DBUtils.setPrompt(talker.name(), prompt);
+          await this.trySay(talker, "设置成功");
         }
       }
     },
@@ -84,8 +84,10 @@ export class ChatGPTBot {
       exec: async (talker) => {
         if (talker instanceof RoomImpl) {
           DBUtils.clearHistory(await talker.topic());
+          await this.trySay(talker, "清除成功");
         }else{
           DBUtils.clearHistory(talker.name());
+          await this.trySay(talker, "清除成功");
         }
       }
     }
@@ -116,9 +118,9 @@ export class ChatGPTBot {
     if (item.length > 1) {
       text = item[item.length - 1];
     }
-    
+
     const { chatTriggerRule, chatPrivateTriggerRule } = this;
-    
+
     if (privateChat && chatPrivateTriggerRule) {
       text = text.replace(chatPrivateTriggerRule, "")
     } else if (!privateChat) {
