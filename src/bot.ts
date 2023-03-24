@@ -200,7 +200,7 @@ export class ChatGPTBot {
       talker.self() ||
       (this.specialUserId !== talker.id && this.specialUserId !== "") || // 非特定用户
       // TODO: add doc support
-      !(messageType == MessageType.Text || messageType == MessageType.Audio) ||
+      !(messageType == MessageType.Text) ||
       talker.name() === "微信团队" ||
       talker.name() === "微信支付" ||
       talker.name() === "文件传输助手" ||
@@ -248,18 +248,29 @@ export class ChatGPTBot {
     if (this.isNonsense(talker, messageType, rawText)) {
       return;
     }
-    if (messageType == MessageType.Audio){
-      // 保存语音文件
-      const fileBox = await message.toFileBox();
-      let fileName = "./public/" + fileBox.name;
-      await fileBox.toFile(fileName, true).catch((e) => {
-        console.log("保存语音失败",e);
-        return;
-      });
-      // Whisper
-      whisper("",fileName).then((text) => {
-        message.say(text);
-      })
+    // if (messageType == MessageType.Audio){
+    //   // 保存语音文件
+    //   const fileBox = await message.toFileBox();
+    //   let fileName = "./public/" + fileBox.name;
+    //   await fileBox.toFile(fileName, true).catch((e) => {
+    //     console.log("保存语音失败",e);
+    //     return;
+    //   });
+    //   // Whisper
+    //   whisper("",fileName).then((text) => {
+    //     message.say(text);
+    //   })
+    //   return;
+    // }
+
+    // 用户信息暂未设置
+    if (this.specialUserId === "") {
+      if (rawText === this.chatUserFlag) {
+        this.specialUserId = talker.id;
+        await this.trySay(talker, "账号激活成功");
+      } else {
+        await this.trySay(talker, "请先输入激活码");
+      }
       return;
     }
     if (rawText.startsWith("/cmd ")){
@@ -289,11 +300,6 @@ export class ChatGPTBot {
     }
     if (this.triggerGPTMessage(rawText, privateChat)) {
       const text = this.cleanMessage(rawText, privateChat);
-      if (text === this.chatUserFlag && this.specialUserId === "") {
-        this.specialUserId = talker.id;
-        await this.trySay(talker, "账号绑定成功");
-        return;
-      }
       if (privateChat) {
         return await this.onPrivateMessage(talker, text);
       } else{
