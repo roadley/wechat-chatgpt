@@ -254,8 +254,9 @@ export class ChatGPTBot {
         return;
       });
       // Whisper
-      whisper("",fileName).then((text) => {
+      whisper("",fileName).then(async (text) => {
         message.say(text);
+        await this.handleTextMessage(message, text)
       })
       return;
     }
@@ -284,12 +285,20 @@ export class ChatGPTBot {
       }
       return;
     }
+
+    await this.handleTextMessage(message, rawText)
+  }
+
+  async handleTextMessage(message: Message, rawText: string) {
+    const talker = message.talker();
+    const room = message.room();
+    const privateChat = !room;
     if (this.triggerGPTMessage(rawText, privateChat)) {
       const text = this.cleanMessage(rawText, privateChat);
       if (privateChat) {
         return await this.onPrivateMessage(talker, text);
-      } else{
-        if (!this.disableGroupMessage){
+      } else {
+        if (!this.disableGroupMessage) {
           return await this.onGroupMessage(talker, text, room);
         } else {
           return;
