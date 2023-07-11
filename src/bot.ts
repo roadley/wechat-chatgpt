@@ -59,11 +59,26 @@ export class ChatGPTBot {
         await this.trySay(talker,"========\n" +
           "/cmd help\n" +
           "# 显示帮助信息\n" +
+          "/cmd model [MODEL]\n" +
+          "# 设置模型，当前支持“chatgpt turbo3.5” 以及 “讯飞星火”，默认为“chatgpt turbo3.5” \n" +
           "/cmd prompt [PROMPT]\n" +
-          "# 设置当前会话的 prompt \n" +
+          "# 设置当前会话的 prompt，仅对model为“chatgpt”生效 \n" +
           "/cmd clear\n" +
           "# 清除自上次启动以来的所有会话\n" +
           "========");
+      }
+    },
+    {
+      name: "model",
+      description: "设置模型",
+      exec: async (talker, prompt) => {
+        if (talker instanceof RoomImpl) {
+          DBUtils.setPrompt(await talker.topic(), prompt);
+          await this.trySay(talker, "设置成功");
+        }else {
+          DBUtils.setPrompt(talker.name(), prompt);
+          await this.trySay(talker, "设置成功");
+        }
       }
     },
     {
