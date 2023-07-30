@@ -2,7 +2,6 @@ import {ChatCompletionRequestMessage} from "openai";
 
 export interface IConfig {
     api?: string;
-    platform?: platform | string;
     openai_api_key: string;
     xunfei_app_id: string;
     xunfei_api_key: string;
@@ -24,4 +23,6 @@ export enum platform {
 export interface User {
     username: string,
     chatMessage: Array<ChatCompletionRequestMessage>,
+    userId: string,
+    platform: platform | string;
 }

@@ -1,6 +1,8 @@
 import {ChatCompletionRequestMessage, ChatCompletionRequestMessageRoleEnum} from "openai";
-import {User} from "./interface";
+import {platform, User} from "./interface.js";
 import {isTokenOverLimit} from "./utils.js";
+import {XunFeiResponseData} from "./xunfei.js";
+import shortUUID from 'short-uuid';
 
 /**
  * 使用内存作为数据库
@@ -20,6 +22,8 @@ class DB {
             return existUser;
         }
         const newUser: User = {
+            platform: platform.CHATGPT,
+            userId: shortUUID.generate(),
             username: username,
             chatMessage: [
                 {
@@ -55,6 +59,9 @@ class DB {
      */
     public setPrompt(username: string, prompt: string): void {
         const user = this.getUserByUsername(username);
+        if (user.platform === platform.XUNFEI) {
+            return
+        }
         if (user) {
             user.chatMessage.find(
                 (msg) => msg.role === ChatCompletionRequestMessageRoleEnum.System
@@ -70,9 +77,9 @@ class DB {
     public addUserMessage(username: string, message: string): void {
         const user = this.getUserByUsername(username);
         if (user) {
-            while (isTokenOverLimit(user.chatMessage)) {
+            while (isTokenOverLimit(user.platform, user.chatMessage)) {
                 // 删除从第2条开始的消息(因为第一条是prompt)
-                user.chatMessage.splice(1, 1);
+                user.chatMessage.splice(1, 2);
             }
             user.chatMessage.push({
                 role: ChatCompletionRequestMessageRoleEnum.User,
@@ -89,13 +96,32 @@ class DB {
     public addAssistantMessage(username: string, message: string): void {
         const user = this.getUserByUsername(username);
         if (user) {
-            while (isTokenOverLimit(user.chatMessage)) {
+            while (isTokenOverLimit(user.platform, user.chatMessage)) {
                 // 删除从第2条开始的消息(因为第一条是prompt)
-                user.chatMessage.splice(1, 1);
+                user.chatMessage.splice(1, 2);
             }
             user.chatMessage.push({
                 role: ChatCompletionRequestMessageRoleEnum.Assistant,
                 content: message,
+            });
+        }
+    }
+
+    /**
+     * 添加ChatGPT的回复
+     * @param username
+     * @param message
+     */
+    public addXunFeiAssistantMessage(username: string, message: XunFeiResponseData): void {
+        const user = this.getUserByUsername(username);
+        if (user) {
+            if (message.isOverTokenLimit) {
+                // 删除从第2条开始的消息(因为第一条是prompt)
+                user.chatMessage.splice(0, 2);
+            }
+            user.chatMessage.push({
+                role: ChatCompletionRequestMessageRoleEnum.Assistant,
+                content: message.answer,
             });
         }
     }
@@ -107,12 +133,13 @@ class DB {
     public clearHistory(username: string): void {
         const user = this.getUserByUsername(username);
         if (user) {
-            user.chatMessage = [
+            // 讯飞没有prompt，chatgpt清除记录后设置默认的prompt
+            user.chatMessage = user.platform === platform.CHATGPT ? [
                 {
                     role: ChatCompletionRequestMessageRoleEnum.System,
                     content: "You are a helpful assistant."
                 }
-            ];
+            ] : []
         }
     }
 

@@ -1,10 +1,12 @@
 import {config} from "./config.js";
+import {platform} from "./interface.js";
 import {ContactImpl, ContactInterface, RoomImpl, RoomInterface} from "wechaty/impls";
 import {Message} from "wechaty";
 import {FileBox} from "file-box";
 import {chatgpt, dalle, whisper} from "./openai.js";
 import DBUtils from "./data.js";
 import {regexpEncode} from "./utils.js";
+import {xunFei} from "./xunfei.js";
 
 enum MessageType {
     Unknown = 0,
@@ -68,7 +70,7 @@ export class ChatGPTBot {
                     "/cmd help\n" +
                     "# 显示帮助信息\n" +
                     "/cmd model [MODEL]\n" +
-                    "# 设置模型，当前支持“chatgpt turbo3.5” 以及 “讯飞星火”，默认为“chatgpt turbo3.5” \n" +
+                    "# 设置模型，当前支持“chatgpt” 以及 “讯飞星火”，默认为“chatgpt” \n" +
                     "/cmd prompt [PROMPT]\n" +
                     "# 设置当前会话的 prompt，仅对model为“chatgpt”生效 \n" +
                     "/cmd clear\n" +
@@ -79,13 +81,14 @@ export class ChatGPTBot {
         {
             name: "model",
             description: "设置模型",
-            exec: async (talker, prompt) => {
-                if (talker instanceof RoomImpl) {
-                    DBUtils.setPrompt(await talker.topic(), prompt);
-                    await this.trySay(talker, "设置成功");
-                } else {
-                    DBUtils.setPrompt(talker.name(), prompt);
-                    await this.trySay(talker, "设置成功");
+            exec: async (talker, model) => {
+                const user = DBUtils.getUserByUsername(talker instanceof RoomImpl ? await talker.topic() : talker.name());
+                if (model === "chatgpt") {
+                    user.platform = platform.CHATGPT
+                    await this.trySay(talker, "模型已设置为chatgpt turbo3.5");
+                } else if (model === "讯飞星火") {
+                    user.platform = platform.XUNFEI
+                    await this.trySay(talker, "模型已设置为讯飞星火");
                 }
             }
         },
@@ -93,12 +96,17 @@ export class ChatGPTBot {
             name: "prompt",
             description: "设置当前会话的prompt",
             exec: async (talker, prompt) => {
-                if (talker instanceof RoomImpl) {
-                    DBUtils.setPrompt(await talker.topic(), prompt);
-                    await this.trySay(talker, "设置成功");
+                const user = DBUtils.getUserByUsername(talker instanceof RoomImpl ? await talker.topic() : talker.name());
+                if (user.platform === platform.XUNFEI) {
+                    await this.trySay(talker, "讯飞星火无法设置prompt");
                 } else {
-                    DBUtils.setPrompt(talker.name(), prompt);
-                    await this.trySay(talker, "设置成功");
+                    if (talker instanceof RoomImpl) {
+                        DBUtils.setPrompt(await talker.topic(), prompt);
+                        await this.trySay(talker, "设置成功");
+                    } else {
+                        DBUtils.setPrompt(talker.name(), prompt);
+                        await this.trySay(talker, "设置成功");
+                    }
                 }
             }
         },
@@ -161,6 +169,15 @@ export class ChatGPTBot {
         if (gptMessage !== "") {
             DBUtils.addAssistantMessage(talkerName, gptMessage);
             return gptMessage;
+        }
+        return "Sorry, please try again later. 😔";
+    }
+
+    async getXunFeiMessage(talkerName: string, text: string): Promise<string> {
+        let xunFeiMessage = await xunFei(talkerName, text);
+        if (xunFeiMessage.answer !== "") {
+            DBUtils.addXunFeiAssistantMessage(talkerName, xunFeiMessage);
+            return xunFeiMessage.answer;
         }
         return "Sorry, please try again later. 😔";
     }
@@ -247,7 +264,13 @@ export class ChatGPTBot {
     }
 
     async onPrivateMessage(talker: ContactInterface, text: string) {
-        const gptMessage = await this.getGPTMessage(talker.name(), text);
+        let gptMessage
+        const user = DBUtils.getUserByUsername(talker.name());
+        if (user.platform === platform.XUNFEI) {
+            gptMessage = await this.getXunFeiMessage(talker.name(), text);
+        } else {
+            gptMessage = await this.getGPTMessage(talker.name(), text);
+        }
         await this.trySay(talker, gptMessage);
     }
 
@@ -256,7 +279,14 @@ export class ChatGPTBot {
         text: string,
         room: RoomInterface
     ) {
-        const gptMessage = await this.getGPTMessage(await room.topic(), text);
+        const topic = await room.topic()
+        let gptMessage
+        const user = DBUtils.getUserByUsername(topic);
+        if (user.platform === platform.XUNFEI) {
+            gptMessage = await this.getXunFeiMessage(topic, text);
+        } else {
+            gptMessage = await this.getGPTMessage(topic, text);
+        }
         const result = `@${talker.name()} ${text}\n\n------\n ${gptMessage}`;
         await this.trySay(room, result);
     }

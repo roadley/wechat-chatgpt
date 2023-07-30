@@ -2,6 +2,7 @@ import {WechatyBuilder} from "wechaty";
 import QRCode from "qrcode";
 import {ChatGPTBot} from "./bot.js";
 import {config} from "./config.js";
+import {xunFei} from "./xunfei.js";
 
 const chatGPTBot = new ChatGPTBot();
 

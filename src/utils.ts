@@ -1,7 +1,7 @@
 import {ChatCompletionRequestMessage} from "openai";
-
 import GPT3TokenizerImport from 'gpt3-tokenizer';
 import {config} from "./config.js";
+import {platform} from "./interface.js";
 
 export const regexpEncode = (str: string) => str.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
 
@@ -26,7 +26,11 @@ function countTokens(str: string): number {
     return encoded.bpe.length
 }
 
-export function isTokenOverLimit(chatMessage: ChatCompletionRequestMessage[]): boolean {
+export function isTokenOverLimit(platformConfig: platform | string, chatMessage: ChatCompletionRequestMessage[]): boolean {
+    // 讯飞的token不从此处判断
+    if (platformConfig === platform.XUNFEI) {
+        return false
+    }
     let limit = 4096;
     if (config.model === "gpt-3.5-turbo" || config.model === "gpt-3.5-turbo-0301") {
         limit = 4096;

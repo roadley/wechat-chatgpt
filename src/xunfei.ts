@@ -1,12 +1,9 @@
-import {
-    Configuration,
-    CreateImageRequestResponseFormatEnum,
-    CreateImageRequestSizeEnum,
-    OpenAIApi
-} from "openai";
-import fs from "fs";
 import DBUtils from "./data.js";
 import {config} from "./config.js";
+import {ChatCompletionRequestMessage} from "openai";
+import WebSocket from "ws";
+import crypto from 'crypto';
+import { URLSearchParams } from 'url';
 
 const configuration = {
     appId: config.xunfei_app_id,
@@ -14,14 +11,14 @@ const configuration = {
     apiSecret: config.xunfei_api_secret,
 };
 const hostUrl = "https://spark-api.xf-yun.com/v1.1/chat";
-let webSocket: WebSocket
 let answer: string
+
+export interface AnswerCallBack {
+    onAnswer(answer: string): any
+}
 
 /**
  * 获取鉴权url
- * @param hostUrl
- * @param apiKey
- * @param apiSecret
  */
 async function getAuthorizationUrl() {
     const url = new URL(hostUrl);
@@ -30,219 +27,184 @@ async function getAuthorizationUrl() {
     const builder = `host: ${url.host}\n` +
         `date: ${date}\n` +
         `GET ${url.pathname} HTTP/1.1`;
+    console.log("builder is ", builder)
+    // configuration.apiSecret = "ZTc1NTQxNzhjY2VjMDc5ZGRjNGExYTg3"
+    // configuration.apiKey = "43063c5710b0d0a2e6bb571b6badda02"
+    // configuration.appId = "93d2272b"
 
-    const crypto = require('crypto');
     const hmac = crypto.createHmac('sha256', configuration.apiSecret);
     hmac.update(builder);
-    const signature = hmac.digest('base64');
+    const tmpSha = hmac.digest();
+
+    const signature = Buffer.from(tmpSha).toString('base64');
+    console.log("signature is ", signature)
 
     const authorizationOrigin = `api_key="${configuration.apiKey}",algorithm="hmac-sha256",headers="host date request-line",signature="${signature}"`;
     const authorization = Buffer.from(authorizationOrigin, 'utf-8').toString('base64');
+    console.log("authorization is ", authorization)
+    console.log("authorizationOrigin is ", authorizationOrigin)
 
-    const queryParams: {
-        [key: string]: string;
-    } = {
+    const searchParams = new URLSearchParams({
         authorization,
         date,
         host: url.host
-    };
+    });
 
-    const queryStr = Object.keys(queryParams)
-        .map(key => {
-            `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`
-        })
-        .join('&');
-
-    const httpUrl = `https://${url.host}${url.pathname}?${queryStr}`;
-
+    const httpUrl = `https://${url.host}${url.pathname}?${searchParams.toString()}`.replace(/\+/g, '%20');
+    console.log("httpUrl is ", httpUrl)
     return httpUrl;
 }
 
-export async function connectXunfei() {
+export async function xunFei(username: string, message: string): Promise<XunFeiResponseData> {
     const authUrl = await getAuthorizationUrl()
-    const url = authUrl.replace("https://", "wss://").replace("http://", "ws://");
-    webSocket = new WebSocket(url);
+    answer = ""
+    return new Promise((resolve, reject)=> {
+        // 先将用户输入的消息添加到数据库中
+        const user = DBUtils.getUserByUsername(username);
+        DBUtils.addUserMessage(username, message);
+        const messages = DBUtils.getChatMessage(username);
 
-    webSocket.addEventListener('open', function (event) {
-        console.log('WebSocket连接已打开');
-    });
+        const url = authUrl.replace("https://", "wss://").replace("http://", "ws://");
+        console.log("请求地址:", url)
+        const webSocket: WebSocket = new WebSocket(url);
 
-    webSocket.addEventListener('message', function (event) {
-        console.log('接收到WebSocket消息:', event.data);
-        const responseData: ResponseData = JSON.parse(event.data);
-        if (responseData.getHeader().getCode() === 0) {
-            console.log("###########");
-            if (responseData.getHeader().getStatus() !== 2) {
-                console.log("****************");
-                const pl: Payload = responseData.getPayload();
-                const temp: ChoicesText[] = pl.getChoices().getText();
-                answer += temp[0].getContent();
-            } else {
-                const pl1: Payload = responseData.getPayload();
-                const textUsage: TextUsage = pl1.getUsage().getText();
-                const prompt_tokens: number = textUsage.getPromptTokens();
-                const temp1: ChoicesText[] = pl1.getChoices().getText();
-                answer += temp1[0].getContent();
-                console.log("返回结果为：\n" + answer);
+        webSocket.on("open", () => {
+            console.log('WebSocket连接已打开');
+            const requestData: RequestData = {
+                header: {
+                    app_id: config.xunfei_app_id,
+                    uid: user.userId
+                },
+                parameter: {
+                    chat: {
+                        domain: "general",
+                        temperature: config.temperature,
+                        max_tokens: 4096,
+                        chat_id: user.userId
+                    }
+                },
+                payload: {
+                    message: {
+                        text: messages
+                    }
+                }
             }
-        } else {
-            console.log("返回结果错误：\n" + responseData.getHeader().getCode() + responseData.getHeader().getMessage());
-        }
-    });
+            console.log("请求数据：" + JSON.stringify(requestData))
+            webSocket.send(JSON.stringify(requestData))
+        })
 
-    webSocket.addEventListener('close', function (event) {
-        console.log('WebSocket连接已关闭');
-    });
+        webSocket.on("message", (event: WebSocket.Data) => {
+            console.log(`接收到WebSocket消息: ${event}`);
+            let str = ""
+            if (typeof event === "object" && event instanceof Buffer) {
+                // 处理 Buffer 类型的数据
+                str = event.toString()
+            } else {
+                // 处理其他类型的数据
+                console.log(`Received data: ${event}`);
+            }
+            const responseData: ResponseData = JSON.parse(str);
+            if (responseData.header.code === 0) {
+                if (responseData.header.status !== 2) {
+                    const pl: Payload = responseData.payload;
+                    const temp: Array<ChatCompletionRequestMessage> = pl.choices.text;
+                    answer += temp[0].content;
+                } else {
+                    const pl1: Payload = responseData.payload;
+                    const textUsage: TextUsage = pl1.usage.text;
+                    const totalToken: number = textUsage.total_tokens;
+                    const temp1: Array<ChatCompletionRequestMessage> = pl1.choices.text;
+                    answer += temp1[0].content;
+                    console.log("返回结果为：\n" + answer);
+                    resolve({
+                        answer: answer,
+                        isOverTokenLimit: totalToken > 3072
+                    });
+                    webSocket.close();
+                }
+            } else {
+                console.log("返回结果错误：\n" + responseData.header.code + responseData.header.message);
+            }
+        });
 
-    webSocket.addEventListener('error', function (event) {
-        console.log('WebSocket连接出错');
-    });
+        webSocket.on("close", (code, reason) => {
+            console.log('WebSocket连接已关闭', code, reason);
+            reject()
+        });
+
+        webSocket.on("error", (err) => {
+            console.log('WebSocket连接出错', err);
+            reject()
+        });
+    })
 }
 
-/**
- * Get completion from OpenAI
- * @param username
- * @param message
- */
-async function xunfei(username: string, message: string): Promise<string> {
-    // 先将用户输入的消息添加到数据库中
-    DBUtils.addUserMessage(username, message);
-    const messages = DBUtils.getChatMessage(username);
-    const response = await openai.createChatCompletion({
-        model: "gpt-3.5-turbo",
-        messages: messages,
-        temperature: config.temperature,
-    });
-    let assistantMessage = "";
-    try {
-        if (response.status === 200) {
-            assistantMessage = response.data.choices[0].message?.content.replace(/^\n+|\n+$/g, "") as string;
-        } else {
-            console.log(`Something went wrong,Code: ${response.status}, ${response.statusText}`)
-        }
-    } catch (e: any) {
-        if (e.request) {
-            console.log("请求出错");
-        }
-    }
-    return assistantMessage;
+export interface XunFeiResponseData {
+    answer: string;
+    isOverTokenLimit: boolean;
 }
 
-class ResponseData {
-    private header!: Header
-    private payload!: Payload
-
-    getHeader() {
-        return this.header;
-    }
-
-    getPayload() {
-        return this.payload;
-    }
+interface ResponseData {
+    header: Header
+    payload: Payload
 }
 
-class Header {
-    private code!: number;
-    private message!: string;
-    private sid!: string;
-    private status!: number;
-
-    getCode(): number {
-        return this.code;
-    }
-
-    getMessage(): string {
-        return this.message;
-    }
-
-    getSid(): string {
-        return this.sid;
-    }
-
-    getStatus(): number {
-        return this.status;
-    }
+interface Header {
+    code: number;
+    message: string;
+    sid: string;
+    status: number;
 }
 
-class Payload {
-    private choices!: Choices
-    private usage!: Usage
-
-    getChoices() {
-        return this.choices;
-    }
-
-    getUsage() {
-        return this.usage;
-    }
+interface Payload {
+    choices: Choices
+    usage: Usage
 }
 
-class Choices {
-    private status!: number;
-    private seq!: number;
-    private text!: ChoicesText[];
-
-    getStatus() {
-        return this.status;
-    }
-
-    getSeq() {
-        return this.seq;
-    }
-
-    getText() {
-        return this.text;
-    }
+interface Choices {
+    status: number;
+    seq: number;
+    text: Array<ChatCompletionRequestMessage>;
 }
 
-class ChoicesText {
-
-    private content!:string;
-    private role!:string;
-    private index!:number;
-
-    getContent(): string {
-        return this.content;
-    }
-
-    getRole(): string {
-        return this.role;
-    }
-
-    getIndex(): number {
-        return this.index;
-    }
+interface Usage {
+    text: TextUsage;
 }
 
-class Usage {
-    private text!: TextUsage;
-
-    getText(): TextUsage {
-        return this.text;
-    }
+interface TextUsage {
+    question_tokens: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
 }
 
-class TextUsage {
-    private question_tokens!: number;
-    private prompt_tokens!: number;
-    private completion_tokens!: number;
-    private total_tokens!: number;
-
-    getQuestionTokens(): number {
-        return this.question_tokens;
-    }
-
-    getPromptTokens(): number {
-        return this.prompt_tokens;
-    }
-
-    getCompletionTokens(): number {
-        return this.completion_tokens;
-    }
-
-    getTotalTokens(): number {
-        return this.total_tokens;
-    }
+interface RequestData {
+    header: RequestHeader;
+    parameter: RequestParameter;
+    payload: RequestPayload
 }
 
-export {chatgpt, dalle, whisper};
+interface RequestHeader {
+    app_id: string;
+    uid: string;
+}
+
+interface RequestParameter {
+    chat: RequestParameterChat;
+}
+
+interface RequestParameterChat {
+    domain: string;
+    temperature?: number;
+    max_tokens?: number;
+    top_k?: number;
+    chat_id?: string;
+}
+
+interface RequestPayload {
+    message: RequestPayloadMessage;
+}
+
+interface RequestPayloadMessage {
+    text: Array<ChatCompletionRequestMessage>;
+}

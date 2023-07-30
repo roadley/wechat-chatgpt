@@ -1,11 +1,10 @@
 import * as dotenv from "dotenv";
-import {IConfig, platform} from "./interface";
+import {IConfig, platform} from "./interface.js";
 
 dotenv.config();
 
 export const config: IConfig = {
     api: process.env.API,
-    platform: process.env.PLATFORM || platform.CHATGPT,
     openai_api_key: process.env.OPENAI_API_KEY || "123456789",
     xunfei_app_id: process.env.XUNFEI_APP_ID || "123456789",
     xunfei_api_key: process.env.XUNFEI_API_KEY || "123456789",
