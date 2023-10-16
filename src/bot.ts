@@ -206,9 +206,12 @@ export class ChatGPTBot {
             message = message.slice(SINGLE_MESSAGE_MAX_SIZE);
         }
         messages.push(message);
-        for (const msg of messages) {
-            await talker.say(msg);
+        for (let i = 0; i < messages.length; i++) {
+            await talker.say(messages[i]);
         }
+        // for (const msg of messages) {
+        //     await talker.say(msg);
+        // }
     }
 
     // Check whether the ChatGPT processing can be triggered

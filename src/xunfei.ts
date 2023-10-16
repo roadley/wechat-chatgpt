@@ -10,7 +10,7 @@ const configuration = {
     apiKey: config.xunfei_api_key,
     apiSecret: config.xunfei_api_secret,
 };
-const hostUrl = "https://spark-api.xf-yun.com/v1.1/chat";
+const hostUrl = "https://spark-api.xf-yun.com/v2.1/chat";
 let answer: string
 
 export interface AnswerCallBack {
@@ -28,9 +28,6 @@ async function getAuthorizationUrl() {
         `date: ${date}\n` +
         `GET ${url.pathname} HTTP/1.1`;
     console.log("builder is ", builder)
-    // configuration.apiSecret = "ZTc1NTQxNzhjY2VjMDc5ZGRjNGExYTg3"
-    // configuration.apiKey = "43063c5710b0d0a2e6bb571b6badda02"
-    // configuration.appId = "93d2272b"
 
     const hmac = crypto.createHmac('sha256', configuration.apiSecret);
     hmac.update(builder);
@@ -77,7 +74,7 @@ export async function xunFei(username: string, message: string): Promise<XunFeiR
                 },
                 parameter: {
                     chat: {
-                        domain: "general",
+                        domain: "generalv2",
                         temperature: config.temperature,
                         max_tokens: 4096,
                         chat_id: user.userId
