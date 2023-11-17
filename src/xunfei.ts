@@ -5,12 +5,23 @@ import WebSocket from "ws";
 import crypto from 'crypto';
 import { URLSearchParams } from 'url';
 
+enum REQUEST_TYPE {
+    // 聊天
+    Chat,
+    // 图片生成
+    ImageGeneration,
+    // 图片理解
+    ImageUnderstanding
+}
+
 const configuration = {
     appId: config.xunfei_app_id,
     apiKey: config.xunfei_api_key,
     apiSecret: config.xunfei_api_secret,
 };
-const hostUrl = "https://spark-api.xf-yun.com/v2.1/chat";
+const chatHostUrl = "https://spark-api.xf-yun.com/v3.1/chat";
+const imageGenerationHostUrl = "https://spark-api.xf-yun.com/v3.1/chat";
+const imageUnderstandingHostUrl = "https://spark-api.xf-yun.com/v3.1/chat";
 let answer: string
 
 export interface AnswerCallBack {
@@ -18,10 +29,26 @@ export interface AnswerCallBack {
 }
 
 /**
+ * 获取不通模式下的host url地址
+ * @param type
+ */
+function getHostUrl(type: REQUEST_TYPE) {
+    switch (type) {
+        case REQUEST_TYPE.ImageGeneration:
+            return imageGenerationHostUrl
+        case REQUEST_TYPE.ImageUnderstanding:
+            return imageUnderstandingHostUrl
+        case REQUEST_TYPE.Chat:
+        default:
+            return chatHostUrl
+    }
+}
+
+/**
  * 获取鉴权url
  */
-async function getAuthorizationUrl() {
-    const url = new URL(hostUrl);
+async function getAuthorizationUrl(type: REQUEST_TYPE) {
+    const url = new URL(getHostUrl(type));
     const date = new Date().toUTCString();
 
     const builder = `host: ${url.host}\n` +
@@ -52,8 +79,13 @@ async function getAuthorizationUrl() {
     return httpUrl;
 }
 
+/**
+ * chat 对话
+ * @param username
+ * @param message
+ */
 export async function xunFei(username: string, message: string): Promise<XunFeiResponseData> {
-    const authUrl = await getAuthorizationUrl()
+    const authUrl = await getAuthorizationUrl(REQUEST_TYPE.Chat)
     answer = ""
     return new Promise((resolve, reject)=> {
         // 先将用户输入的消息添加到数据库中
@@ -74,7 +106,7 @@ export async function xunFei(username: string, message: string): Promise<XunFeiR
                 },
                 parameter: {
                     chat: {
-                        domain: "generalv2",
+                        domain: "generalv3",
                         temperature: config.temperature,
                         max_tokens: 4096,
                         chat_id: user.userId
